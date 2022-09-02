@@ -24,4 +24,4 @@ Not supported (by technical restrictions):
 
 # License
 
-All contents of this repository are released under Creative Commons Share-alike 3.0.
+All contents of this repository are released under <a href="https://creativecommons.org/licenses/by-sa/3.0/">Creative Commons Share-alike 3.0</a>.
