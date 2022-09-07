@@ -14,13 +14,13 @@ Now the ftDuino behaves like a ROBO TX Controller; you can control the device vi
 Not supported (by technical restrictions):
 - TX extensions
 - Synchronisation of encoder motors
-- I2C commands 
 - BT commands 
 - fischertechnik ultrasonic distance sensor 
 
 # History
 
 - Version 1.0 (02.09.2022), testet with TX Firmware 1.30 and ROBO Pro 4.6.6
+- Version 1.1 (07.09.2022), I2C support added, digital line sensor values
 
 # License
 
