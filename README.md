@@ -13,7 +13,7 @@ Now the ftDuino behaves like a ROBO TX Controller; you can control the device vi
 
 Running in online mode, ROBO Pro Programs send request packets to the ROBO TX Controller to configure input and output ports, read inputs, initiate I2C sensors or actors communication and activate motor commands. The "TX Simulator Sketch" is able to execute the following operational elements like a ROBO TX Controller:
 - configuration of input ports (analog/voltage, analog/resistance, digital/voltage, digital/resistance)
-- read of input values (depending on the respective configuration)
+- read of (fischertechnik) sensor values (depending on the respective configuration), exept for the ultrasonic distance sensor
 - configuration, reset and read of counter values
 - set PWM values of output ports
 - activate motor commands (speed/PWM, direction)
@@ -26,7 +26,7 @@ Not supported (by technical restrictions):
 - control of TX extensions
 - synchronisation of encoder motors
 - bluetooth communication 
-- use of the fischertechnik ultrasonic distance sensor 
+- use of the fischertechnik ultrasonic distance sensor (alternative: I2C sensor SRF02 or SRF08)
 
 # History
 
