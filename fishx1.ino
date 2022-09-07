@@ -1,13 +1,14 @@
 /*
  * ROBO Pro für den ftDuino
  * Implementierung des Fish.X1-Protokolls für den TX Controller
- * (Firmware 1.30)
+ * (TX Firmware 1.30)
  * 
  * Dirk Fox
  * based on Fish.X1-parser fx1sample 0.3 by ft-ninja
  * 
  * History: 
  * 
+ * - 07.09.2022: Publication of v1.1
  * - 02.09.2022: Publication of v1.0
  * - 27.07.2022: Fork of fx1sample 0.3 by ft-ninja
  */
@@ -30,14 +31,19 @@ UINT16  x1CheckSum;   // transmitted checksum
 UINT16  x1TransactionID = 0;  // protocol transaction ID (TID)
 UINT16  x1SessionID = 0;      // protocol session ID (SID)
 
-UINT16  cnt_reset_req[N_CNT];        // counter: reset requests
-BOOL8   counter_config[N_CNT];       // HIGH: count if signal is rising, LOW: count if signal is falling
+UINT16  cnt_reset_req[N_CNT];   // counter: reset requests
+BOOL8   counter_config[N_CNT];  // HIGH: count if signal is rising, LOW: count if signal is falling
+
+BOOL8   line_sensor[N_UNI];     // flag indicating that line sensor is attached
 
 UINT16  cnt_ext_motor_cmd[N_MOTOR];  // counter: extended motor commands
 BOOL8   motor_config[N_MOTOR];       // TRUE: m[i] pair of corresponding outputs, FALSE: separate PWM outputs
 BOOL8   motor_distance[N_MOTOR];     // TRUE: extended motor commands activated
 BOOL8   motor_active[N_MOTOR];       // TRUE: extended motor command active, position not yet reached
 UINT8   position_reached[N_MOTOR];   // position reached counter
+
+BOOL8   i2c_ch_open;      // flag: (no) open I2C connection
+UINT16  i2c_speed = 100;  // current I2C bus transmission speed (default: 100 kHz)
 
 // parse symbol
 
@@ -212,6 +218,27 @@ void fx1ParseProcPacket(unsigned char *packetPtr) {
       break;
     case CMD_007: CMD_107_Reply();              // reply to status request
       break;
+    case CMD_019: CMD_119_Reply(packetPtr+24);  // reply to i2c read request
+      break;
+    case CMD_020: CMD_120_Reply(packetPtr+24);  // reply to i2c write request
+      break;
+  }
+}
+
+// set I2C speed
+
+void set_i2c_speed(BOOL8 fast) {
+  if (fast) {  // change to fast mode
+    if (i2c_speed == 1) {
+      i2c_speed = 4;
+      Wire.setClock(400000);
+    }
+    else {  // change to normal mode
+      if (i2c_speed == 4) {
+        i2c_speed = 1;
+        Wire.setClock(100000);
+      }
+    }
   }
 }
 
@@ -233,6 +260,7 @@ void CMD_101_Reply(void) {  // initialize TX: all counters to zero, flags to def
   for (i = 0; i < N_PWM_CHAN; i++)
     ftduino.output_set(i, Ftduino::OFF, Ftduino::OFF); 
 
+  i2c_ch_open = false;   // all I2C connections closed
   sendX1Data(CMD_101, 0, (unsigned char*)NULL, 0);  // send empty packet with incremented SID
 }
 
@@ -354,7 +382,12 @@ void CMD_102_Reply(unsigned char *data) {
   // input ports
   
   for (i = 0; i < N_UNI; i++) {  // read input values
-    reply->X1Data.uni[i] = ftduino.input_get(i);
+    if (line_sensor[i]) {
+      if (ftduino.input_get(i) < LINE_SENSOR_THRESHOLD)
+        reply->X1Data.uni[i] = 0;
+      else
+        reply->X1Data.uni[i] = 1;
+    } else reply->X1Data.uni[i] = ftduino.input_get(i);
   }
 
   // fast counters
@@ -385,13 +418,23 @@ void CMD_105_Reply(unsigned char *data) {
   }
 
   for (i = 0; i < N_UNI; i++) {  // set selected input mode
-    if (request->X1Data.uni[i] & 0x01) {
-      ftduino.input_set_mode(i, Ftduino::RESISTANCE);
-      if (request->X1Data.uni[i] & 0x80) {
+    switch (request->X1Data.uni[i]) {
+      case 0x00:
+        ftduino.input_set_mode(i, Ftduino::VOLTAGE);
+        line_sensor[i] = false;
+        break;
+      case 0x01:
+        ftduino.input_set_mode(i, Ftduino::RESISTANCE);
+        line_sensor[i] = false;
+        break;
+      case 0x80:
+        ftduino.input_set_mode(i, Ftduino::VOLTAGE);
+        line_sensor[i] = true;
+        break;
+      case 0x81:
         ftduino.input_set_mode(i, Ftduino::SWITCH);
-      }
-    } else {
-      ftduino.input_set_mode(i, Ftduino::VOLTAGE);
+        line_sensor[i] = false;
+        break;
     }
   }
 
@@ -458,4 +501,63 @@ void CMD_107_Reply(void) {
   memset((unsigned char*)reply, 0, sizeof(CMD_107_Data));
   
   sendX1Data(CMD_107, 1, (unsigned char*)reply, sizeof(CMD_107_Data));  // send Fish.X1 reply packet
+}
+
+// CMD 019: I2C Read Request, CMD 119: I2C Read Reply
+
+void CMD_119_Reply(unsigned char *data) {
+  TA_I2C_CMD *request = (TA_I2C_CMD *) data;
+  TA_I2C_DATA *reply = (TA_I2C_DATA *) tmpData;  // reply data packet
+  memset((unsigned char*)reply, 0, sizeof(TA_I2C_DATA));  // initialise data packet with zeros
+
+  if (!i2c_ch_open)  // if no open I2C connection
+    set_i2c_speed(request->i2c_config & 0x80);
+
+  if (request->i2c_config & 0x03) {
+    Wire.beginTransmission(request->i2c_address);
+    if (request->i2c_config & 0x02)
+      Wire.write(request->i2c_subaddress[1]);
+    Wire.write(request->i2c_subaddress[0]);
+    Wire.endTransmission();
+  }
+  if (request->i2c_config & 0x08) {
+    Wire.requestFrom(request->i2c_address, 2);
+    while (Wire.available() < 2);
+    reply->i2c_data[1] = Wire.read();
+    reply->i2c_data[0] = Wire.read();
+  } 
+  else if (request->i2c_config & 0x04) {
+    Wire.requestFrom(request->i2c_address, 1);
+    while (Wire.available() < 0);
+    reply->i2c_data[0] = Wire.read();
+  }
+    
+  sendX1Data(CMD_119, 1, (unsigned char*)reply, sizeof(TA_I2C_DATA));  // send Fish.X1 reply packet
+}
+
+// CMD 020: I2C Write Request, CMD 120: I2C Write Reply
+
+void CMD_120_Reply(unsigned char *data) {
+  TA_I2C_CMD *request = (TA_I2C_CMD *) data;
+  TA_I2C_DATA *reply = (TA_I2C_DATA *) tmpData;  // reply data packet
+  memset((unsigned char*)reply, 0, sizeof(TA_I2C_DATA));  // initialise data packet with zeros
+  
+  if (!i2c_ch_open)  // if no open I2C connection
+    set_i2c_speed(request->i2c_config & 0x80);
+
+  Wire.beginTransmission(request->i2c_address);
+  if (request->i2c_config & 0x03) {
+    if (request->i2c_config & 0x02)
+      Wire.write(request->i2c_subaddress[1]);
+    Wire.write(request->i2c_subaddress[0]);
+  }
+  if (request->i2c_config & 0x0C) {
+    if (request->i2c_config & 0x08)
+      Wire.write(request->i2c_data[1]);
+    Wire.write(request->i2c_data[0]);  // write at least one byte (8 bit data)
+  }
+  Wire.endTransmission();
+
+  memcpy((void*)(request->i2c_data), (void*)reply, 2);  // copy data to reply packet
+  sendX1Data(CMD_120, 1, (unsigned char*)reply, 4);     // send Fish.X1 reply packet
 }

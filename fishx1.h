@@ -4,7 +4,7 @@
 #include "common.h"
 
 #define TX_BAUD      38400
-#define BUF_MAXLEN   95  // one data packet: max. 95 byte
+#define BUF_MAXLEN   95  // one data packet: max. 95 byte, 9 data packets: max. 495 byte
 
 // Selection of used constants from ROBO_TX_FW.h
 
@@ -21,10 +21,7 @@
 #define U_MAX                   9999        // [mV]
 #define U_OVR                   10000       // [mV] overload
 
-#define ULTRASONIC_MIN          2           // Ultrasonic Sensor range [cm]
-#define ULTRASONIC_MAX          1023        // [cm]
-#define ULTRASONIC_OVR          1024        // [cm] overload
-#define NO_ULTRASONIC           4096        // Not present
+#define LINE_SENSOR_THRESHOLD   4000        // threshold for (analogue) line sensor values
 
 #define DUTY_MIN                0           // Motor outputs PWM values range
 #define DUTY_MAX                512
@@ -42,7 +39,7 @@
 #define N_EXT                   (TA_COUNT - 1)  // Number of extension Controllers = 8
 
 #define STX                     2           // start transmission
-#define U                       0x55
+#define U                       0x55        // fish.X1 frame start indicator
 #define ETX                     3           // end of transmission
 
 // Fish.X1 command codes
@@ -58,6 +55,10 @@ enum eX1CmdCode {
   CMD_106               = 106, // reply, 0x6A
   CMD_007               = 7,
   CMD_107               = 107, // reply, 0x6B
+  CMD_019               = 19,
+  CMD_119               = 119, // reply, 0x77
+  CMD_020               = 20,
+  CMD_120               = 120, // reply, 0x78
 };
 
 // device connect state
@@ -163,6 +164,23 @@ typedef struct {
   UINT8   btstatus[BT_CNT_MAX];          // Status of Bluetooth connections
   UINT8   reserved[8];
 } TA_STATE;
+
+// TA_I2C_CMD: I2C command structure, 8 bytes, used by CMD019 and CMD020
+
+typedef struct {
+  UINT8   i2c_address;
+  UINT8   i2c_config;
+  UINT8   i2c_data[2];
+  UINT8   i2c_subaddress[2];
+  UINT8   reserved[2];
+} TA_I2C_CMD;
+
+// TA_I2C_DATA: I2C read reply structure, 4 bytes (data)
+
+typedef struct {
+  UINT8   i2c_data[2];
+  UINT8   reserved[2];
+} TA_I2C_DATA;
 
 // Structures of CMD Data Packets
 
