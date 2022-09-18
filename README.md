@@ -30,7 +30,7 @@ Not supported (by technical restrictions):
 
 # History
 
-- Version 1.0 (02.09.2022), testet with TX Firmware 1.30 and ROBO Pro 4.6.6
+- Version 1.0 (02.09.2022), testet with TX Firmware 1.30 and ROBO Pro 4.7.0
 - Version 1.1 (07.09.2022), I2C support added, digital line sensor values
 
 # License
